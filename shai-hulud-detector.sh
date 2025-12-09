@@ -22,6 +22,9 @@ set -eo pipefail
 # Script directory for locating companion files (compromised-packages.txt)
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
+# URL for compromised packages CSV (can be overridden via COMPROMISED_PACKAGES_CSV_URL env var)
+COMPROMISED_PACKAGES_CSV_URL="${COMPROMISED_PACKAGES_CSV_URL:-https://raw.githubusercontent.com/DataDog/indicators-of-compromise/main/shai-hulud-2.0/consolidated_iocs.csv}"
+
 # Global temp directory for file-based storage
 TEMP_DIR=""
 
@@ -200,7 +203,7 @@ declare -A COMPROMISED_NAMESPACES_MAP  # "@namespace" -> 1
 # Modifies: COMPROMISED_PACKAGES_MAP (global associative array)
 # Returns: Populates COMPROMISED_PACKAGES_MAP for O(1) lookups
 load_compromised_packages() {
-    local csv_url="https://raw.githubusercontent.com/DataDog/indicators-of-compromise/main/shai-hulud-2.0/consolidated_iocs.csv"
+    local csv_url="$COMPROMISED_PACKAGES_CSV_URL"
     local temp_csv=""
     local count=0
 

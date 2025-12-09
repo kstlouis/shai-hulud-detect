@@ -195,22 +195,105 @@ declare -A COMPROMISED_PACKAGES_MAP    # "package:version" -> 1
 declare -A COMPROMISED_NAMESPACES_MAP  # "@namespace" -> 1
 
 # Function: load_compromised_packages
-# Purpose: Load compromised package database from external file or fallback list
-# Args: None (reads from compromised-packages.txt in script directory)
+# Purpose: Load compromised package database from online CSV file or fallback list
+# Args: None (fetches from DataDog indicators-of-compromise repository)
 # Modifies: COMPROMISED_PACKAGES_MAP (global associative array)
 # Returns: Populates COMPROMISED_PACKAGES_MAP for O(1) lookups
 load_compromised_packages() {
-    local packages_file="$SCRIPT_DIR/compromised-packages.txt"
+    local csv_url="https://raw.githubusercontent.com/DataDog/indicators-of-compromise/main/shai-hulud-2.0/consolidated_iocs.csv"
+    local temp_csv=""
     local count=0
 
-    if [[ -f "$packages_file" ]]; then
-        # Use mapfile to read all valid lines at once, then populate associative array
+    # Create temporary file for CSV (use system temp if TEMP_DIR not yet created)
+    if [[ -n "$TEMP_DIR" && -d "$TEMP_DIR" ]]; then
+        temp_csv="$TEMP_DIR/consolidated_iocs.csv"
+    else
+        # Create temporary file in system temp directory
+        temp_csv=$(mktemp -t shai-hulud-iocs-XXXXXX.csv 2>/dev/null || echo "/tmp/shai-hulud-iocs-$$.csv")
+    fi
+
+    # Fetch CSV from online source
+    print_status "$BLUE" "📥 Fetching compromised packages from: $csv_url"
+    
+    # Try to fetch using curl or wget
+    local fetch_success=false
+    if command -v curl >/dev/null 2>&1; then
+        if curl -sSfL --max-time 10 --connect-timeout 5 "$csv_url" > "$temp_csv" 2>/dev/null; then
+            fetch_success=true
+        fi
+    elif command -v wget >/dev/null 2>&1; then
+        if wget -q --timeout=10 --tries=1 -O "$temp_csv" "$csv_url" 2>/dev/null; then
+            fetch_success=true
+        fi
+    fi
+
+    if [[ "$fetch_success" == "true" && -f "$temp_csv" && -s "$temp_csv" ]]; then
+        # Parse CSV file and extract package:version pairs
+        # CSV format: package_name,package_versions,sources
+        # package_versions can be a single version or comma-separated list like "0.0.7, 0.0.8"
         local -a raw_packages
-        mapfile -t raw_packages < <(
-            grep -v '^[[:space:]]*#' "$packages_file" | \
-            grep -E '^[a-zA-Z@][^:]+:[0-9]+\.[0-9]+\.[0-9]+' | \
-            tr -d $'\r'
-        )
+        
+        # Try Python first (more reliable CSV parsing), fallback to awk
+        if command -v python3 >/dev/null 2>&1 || command -v python >/dev/null 2>&1; then
+            local python_cmd="python3"
+            command -v python3 >/dev/null 2>&1 || python_cmd="python"
+            mapfile -t raw_packages < <(
+                $python_cmd -c "
+import csv
+import sys
+import re
+
+with open('$temp_csv', 'r', encoding='utf-8') as f:
+    reader = csv.DictReader(f)
+    for row in reader:
+        package_name = row['package_name'].strip()
+        package_versions = row['package_versions'].strip()
+        
+        if package_name and package_versions:
+            # Split versions by comma (handle spaces)
+            versions = [v.strip() for v in re.split(r'[,\s]+', package_versions)]
+            for version in versions:
+                # Validate version format (semver: x.y.z)
+                if re.match(r'^\d+\.\d+\.\d+$', version):
+                    print(f'{package_name}:{version}')
+" 2>/dev/null | \
+                grep -E '^[a-zA-Z@][^:]+:[0-9]+\.[0-9]+\.[0-9]+' | \
+                tr -d $'\r' | \
+                sort -u
+            )
+        else
+            # Fallback to awk (simpler parsing, may miss some edge cases)
+            mapfile -t raw_packages < <(
+                awk -F',' '
+                NR > 1 && NF >= 2 {
+                    # Extract package_name (first field, remove quotes and trim)
+                    package_name = $1
+                    gsub(/^[" ]+|[" ]+$/, "", package_name)
+                    
+                    # Extract package_versions (second field, remove quotes and trim)
+                    versions = $2
+                    gsub(/^[" ]+|[" ]+$/, "", versions)
+                    
+                    # Skip empty lines
+                    if (package_name != "" && versions != "") {
+                        # Split versions by comma and optional whitespace
+                        n = split(versions, version_array, /[,\s]+/)
+                        for (i = 1; i <= n; i++) {
+                            version = version_array[i]
+                            gsub(/^[ ]+|[ ]+$/, "", version)
+                            # Validate version format (x.y.z)
+                            if (version != "" && version ~ /^[0-9]+\.[0-9]+\.[0-9]+$/) {
+                                print package_name ":" version
+                            }
+                        }
+                    }
+                }
+                ' "$temp_csv" 2>/dev/null | \
+                grep -E '^[a-zA-Z@][^:]+:[0-9]+\.[0-9]+\.[0-9]+' | \
+                tr -d $'\r' | \
+                sort -u
+            )
+        fi
 
         # Populate associative array for O(1) lookups
         for pkg in "${raw_packages[@]}"; do
@@ -218,10 +301,10 @@ load_compromised_packages() {
             ((count++)) || true  # Prevent errexit when count starts at 0
         done
 
-        print_status "$BLUE" "📦 Loaded $count compromised packages from $packages_file (O(1) lookup enabled)"
+        print_status "$GREEN" "✓ Loaded $count compromised packages from online CSV (O(1) lookup enabled)"
     else
-        # Fallback to embedded list if file not found
-        print_status "$YELLOW" "⚠️  Warning: $packages_file not found, using embedded package list"
+        # Fallback to embedded list if fetch fails
+        print_status "$YELLOW" "⚠️  Warning: Unable to fetch online CSV, using embedded package list"
         local fallback_packages=(
             "@ctrl/tinycolor:4.1.0"
             "@ctrl/tinycolor:4.1.1"
@@ -234,6 +317,8 @@ load_compromised_packages() {
         for pkg in "${fallback_packages[@]}"; do
             COMPROMISED_PACKAGES_MAP["$pkg"]=1
         done
+        count=${#fallback_packages[@]}
+        print_status "$BLUE" "📦 Loaded $count compromised packages from fallback list"
     fi
 }
 

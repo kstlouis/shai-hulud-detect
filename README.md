@@ -1,22 +1,24 @@
 # Shai-Hulud NPM Supply Chain Attack Detector
 
-**⚠️ This is a purpose-built fork of the [original repository](https://github.com/Cobenian/shai-hulud-detect). This fork is very much still a work in progress.**
+**⚠️ This is a purpose-built fork of [shai-hulud-detect](https://github.com/Cobenian/shai-hulud-detect). It is designed to be deployed via MDM instead of executed by the local user. It is very much a work in progress.**
 
-A Bash tool that helps you spot known traces of the September 2025 and November 2025 npm supply-chain attacks—including the Shai-Hulud self-replicating worm, the chalk/debug crypto-theft incident, and the "Shai-Hulud: The Second Coming" fake Bun runtime attack.
+## About
+
+[shai-hulud-detect](https://github.com/Cobenian/shai-hulud-detect) is a Bash tool that helps you spot known traces of the September 2025 and November 2025 npm supply-chain attacks—including the Shai-Hulud self-replicating worm, the chalk/debug crypto-theft incident, and the "Shai-Hulud: The Second Coming" fake Bun runtime attack.
 
 ## Key Differences from Original
 
-This fork includes modifications for specific use cases:
+This fork includes a few modifications:
 
-- **Online CSV Source**: Loads compromised packages from DataDog's [indicators-of-compromise](https://github.com/DataDog/indicators-of-compromise) repository instead of a local file
-- **Configurable CSV URL**: The CSV URL can be overridden via the `COMPROMISED_PACKAGES_CSV_URL` environment variable
-- **Work in Progress**: Additional modifications and improvements are ongoing
+- **Online CSV Source**: Loads compromised packages from DataDog's [indicators-of-compromise](https://github.com/DataDog/indicators-of-compromise) repository instead of a local file; one-click redeployment if more infected packages are discovered
 
-## Quick Start
+- **Work in Progress**: Additional modifications and improvements are ongoing to make this deployable via Jamf Pro (drop to local user, parameter substitution for dir path and .csv source URL)
+
+## Testing
 
 ```bash
 # Clone the repository
-git clone https://github.com/kstlouis/shai-hulud-detect
+
 cd shai-hulud-detect
 
 # Make the script executable
@@ -24,10 +26,20 @@ chmod +x shai-hulud-detector.sh
 
 # Scan your project for Shai-Hulud indicators
 ./shai-hulud-detector.sh /path/to/your/project
-
-# Override CSV URL (optional)
-COMPROMISED_PACKAGES_CSV_URL="https://example.com/my-csv.csv" ./shai-hulud-detector.sh /path/to/your/project
 ```
+Note that you'll need to adjust for parameter substition (`$4`, `$5`) for local testing.
+
+When you're ready, upload `shai-hulud-detector.sh` to your MDM to deploy remotely.
+
+## Disclaimers
+
+This was built using:
+- a limited amount of scripting experience 
+- a healthy (..) amount of assistance from Cursor
+- an almost impossibly short imposed dealine
+Use at your own risk.
+
+In theory any MDM should work, but this was only tested and used with Jamf Pro.
 
 ## Requirements
 
@@ -44,7 +56,7 @@ COMPROMISED_PACKAGES_CSV_URL="https://example.com/my-csv.csv" ./shai-hulud-detec
 
 ## Original Repository
 
-For the original, fully-featured version with comprehensive documentation, see:
+For the original, fully-featured version with comprehensive documentation, please refer to:
 - **Original Repository**: https://github.com/Cobenian/shai-hulud-detect
 
 ## License

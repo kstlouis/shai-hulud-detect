@@ -4,7 +4,7 @@
 # Detects indicators of compromise from September 2025 and November 2025 npm attacks
 # Includes detection for "Shai-Hulud: The Second Coming" (fake Bun runtime attack)
 # Usage: ./shai-hulud-detector.sh <directory_to_scan>
-# Jamf Pro: Parameter 4 can be used to specify the project directory path
+# Jamf Pro: Parameter 4 = project directory path, Parameter 5 = CSV URL for compromised packages
 #
 # Requires: Bash 5.0+
 
@@ -22,9 +22,6 @@ set -eo pipefail
 
 # Script directory for locating companion files (compromised-packages.txt)
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-
-# URL for compromised packages CSV (can be overridden via COMPROMISED_PACKAGES_CSV_URL env var)
-COMPROMISED_PACKAGES_CSV_URL="${COMPROMISED_PACKAGES_CSV_URL:-https://raw.githubusercontent.com/DataDog/indicators-of-compromise/main/shai-hulud-2.0/consolidated_iocs.csv}"
 
 # Global temp directory for file-based storage
 TEMP_DIR=""
@@ -204,38 +201,63 @@ declare -A COMPROMISED_NAMESPACES_MAP  # "@namespace" -> 1
 # Modifies: COMPROMISED_PACKAGES_MAP (global associative array)
 # Returns: Populates COMPROMISED_PACKAGES_MAP for O(1) lookups
 load_compromised_packages() {
-    local csv_url="$COMPROMISED_PACKAGES_CSV_URL"
+    local csv_url="${COMPROMISED_PACKAGES_CSV_URL:-}"
     local temp_csv=""
     local count=0
 
-    # Create temporary file for CSV (use system temp if TEMP_DIR not yet created)
-    if [[ -n "$TEMP_DIR" && -d "$TEMP_DIR" ]]; then
-        temp_csv="$TEMP_DIR/consolidated_iocs.csv"
+    # If no CSV URL provided, use local compromised-packages.txt file
+    if [[ -z "$csv_url" ]]; then
+        local local_file="$SCRIPT_DIR/compromised-packages.txt"
+        if [[ -f "$local_file" ]]; then
+            print_status "$BLUE" "📦 Loading compromised packages from local file: $local_file"
+            # Load from local file (format: package:version)
+            while IFS= read -r line || [[ -n "$line" ]]; do
+                # Skip empty lines and comments
+                [[ -z "$line" || "$line" =~ ^[[:space:]]*# ]] && continue
+                # Remove leading/trailing whitespace
+                line="${line#"${line%%[![:space:]]*}"}"
+                line="${line%"${line##*[![:space:]]}"}"
+                # Validate format (package:version)
+                if [[ "$line" =~ ^[^:]+:[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+                    COMPROMISED_PACKAGES_MAP["$line"]=1
+                    ((count++)) || true
+                fi
+            done < "$local_file"
+            print_status "$GREEN" "✓ Loaded $count compromised packages from local file (O(1) lookup enabled)"
+            return 0
+        else
+            print_status "$YELLOW" "⚠️  Warning: Local file $local_file not found, using embedded package list"
+            # Fall through to embedded list
+        fi
     else
-        # Create temporary file in system temp directory
-        temp_csv=$(mktemp -t shai-hulud-iocs-XXXXXX.csv 2>/dev/null || echo "/tmp/shai-hulud-iocs-$$.csv")
-    fi
-
-    # Fetch CSV from online source
-    print_status "$BLUE" "📥 Fetching compromised packages from: $csv_url"
-    
-    # Try to fetch using curl or wget
-    local fetch_success=false
-    if command -v curl >/dev/null 2>&1; then
-        if curl -sSfL --max-time 10 --connect-timeout 5 "$csv_url" > "$temp_csv" 2>/dev/null; then
-            fetch_success=true
+        # Fetch CSV from online source
+        # Create temporary file for CSV (use system temp if TEMP_DIR not yet created)
+        if [[ -n "$TEMP_DIR" && -d "$TEMP_DIR" ]]; then
+            temp_csv="$TEMP_DIR/consolidated_iocs.csv"
+        else
+            # Create temporary file in system temp directory
+            temp_csv=$(mktemp -t shai-hulud-iocs-XXXXXX.csv 2>/dev/null || echo "/tmp/shai-hulud-iocs-$$.csv")
         fi
-    elif command -v wget >/dev/null 2>&1; then
-        if wget -q --timeout=10 --tries=1 -O "$temp_csv" "$csv_url" 2>/dev/null; then
-            fetch_success=true
-        fi
-    fi
 
-    if [[ "$fetch_success" == "true" && -f "$temp_csv" && -s "$temp_csv" ]]; then
-        # Parse CSV file and extract package:version pairs
-        # CSV format: package_name,package_versions,sources
-        # package_versions can be a single version or comma-separated list like "0.0.7, 0.0.8"
-        local -a raw_packages
+        print_status "$BLUE" "📥 Fetching compromised packages from: $csv_url"
+        
+        # Try to fetch using curl or wget
+        local fetch_success=false
+        if command -v curl >/dev/null 2>&1; then
+            if curl -sSfL --max-time 10 --connect-timeout 5 "$csv_url" > "$temp_csv" 2>/dev/null; then
+                fetch_success=true
+            fi
+        elif command -v wget >/dev/null 2>&1; then
+            if wget -q --timeout=10 --tries=1 -O "$temp_csv" "$csv_url" 2>/dev/null; then
+                fetch_success=true
+            fi
+        fi
+
+        if [[ "$fetch_success" == "true" && -f "$temp_csv" && -s "$temp_csv" ]]; then
+            # Parse CSV file and extract package:version pairs
+            # CSV format: package_name,package_versions,sources
+            # package_versions can be a single version or comma-separated list like "0.0.7, 0.0.8"
+            local -a raw_packages
         
         # Try Python first (more reliable CSV parsing), fallback to awk
         if command -v python3 >/dev/null 2>&1 || command -v python >/dev/null 2>&1; then
@@ -299,16 +321,22 @@ with open('$temp_csv', 'r', encoding='utf-8') as f:
             )
         fi
 
-        # Populate associative array for O(1) lookups
-        for pkg in "${raw_packages[@]}"; do
-            COMPROMISED_PACKAGES_MAP["$pkg"]=1
-            ((count++)) || true  # Prevent errexit when count starts at 0
-        done
+            # Populate associative array for O(1) lookups
+            for pkg in "${raw_packages[@]}"; do
+                COMPROMISED_PACKAGES_MAP["$pkg"]=1
+                ((count++)) || true  # Prevent errexit when count starts at 0
+            done
 
-        print_status "$GREEN" "✓ Loaded $count compromised packages from online CSV (O(1) lookup enabled)"
-    else
-        # Fallback to embedded list if fetch fails
-        print_status "$YELLOW" "⚠️  Warning: Unable to fetch online CSV, using embedded package list"
+            print_status "$GREEN" "✓ Loaded $count compromised packages from online CSV (O(1) lookup enabled)"
+            return 0
+        else
+            # Fallback to embedded list if fetch fails
+            print_status "$YELLOW" "⚠️  Warning: Unable to fetch online CSV, using embedded package list"
+        fi
+    fi
+
+    # Fallback to embedded list if CSV fetch failed or local file not found
+    if [[ ${#COMPROMISED_PACKAGES_MAP[@]} -eq 0 ]]; then
         local fallback_packages=(
             "@ctrl/tinycolor:4.1.0"
             "@ctrl/tinycolor:4.1.1"
@@ -512,7 +540,9 @@ usage() {
     echo ""
     echo "JAMF PRO DEPLOYMENT:"
     echo "  Parameter 4: Project directory path (used if no directory provided via arguments)"
+    echo "  Parameter 5: CSV URL for compromised packages (overrides default URL)"
     echo "  Example: Set Parameter 4 to '/Users/username/project' in Jamf policy"
+    echo "  Example: Set Parameter 5 to 'https://example.com/custom-iocs.csv' for custom CSV"
     exit 1
 }
 
@@ -2888,9 +2918,17 @@ main() {
     local scan_dir=""
     local save_log=""
     
-    # Jamf Pro compatibility: Save Parameter 4 before argument parsing
+    # Jamf Pro compatibility: Save Parameters 4 and 5 before argument parsing
     # Jamf passes parameters as $1, $2, $3, $4, etc.
     local jamf_param4="${4:-}"
+    local jamf_param5="${5:-}"
+    
+    # Set CSV URL only if Parameter 5 is provided
+    # If not provided, load_compromised_packages will use local compromised-packages.txt file
+    # Environment variable COMPROMISED_PACKAGES_CSV_URL can also be used
+    if [[ -n "$jamf_param5" ]]; then
+        COMPROMISED_PACKAGES_CSV_URL="$jamf_param5"
+    fi
 
     # Load compromised packages from external file
     load_compromised_packages

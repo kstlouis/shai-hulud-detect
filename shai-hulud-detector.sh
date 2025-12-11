@@ -4,6 +4,7 @@
 # Detects indicators of compromise from September 2025 and November 2025 npm attacks
 # Includes detection for "Shai-Hulud: The Second Coming" (fake Bun runtime attack)
 # Usage: ./shai-hulud-detector.sh <directory_to_scan>
+# Jamf Pro: Parameter 4 can be used to specify the project directory path
 #
 # Requires: Bash 5.0+
 
@@ -508,6 +509,10 @@ usage() {
     echo "  $0 --paranoid /path/to/your/project         # Core + advanced security checks"
     echo "  $0 --save-log report.log /path/to/project   # Save findings to file"
     echo "  $0 --use-ripgrep /path/to/your/project      # Force ripgrep for testing"
+    echo ""
+    echo "JAMF PRO DEPLOYMENT:"
+    echo "  Parameter 4: Project directory path (used if no directory provided via arguments)"
+    echo "  Example: Set Parameter 4 to '/Users/username/project' in Jamf policy"
     exit 1
 }
 
@@ -2882,6 +2887,10 @@ main() {
     local paranoid_mode=false
     local scan_dir=""
     local save_log=""
+    
+    # Jamf Pro compatibility: Save Parameter 4 before argument parsing
+    # Jamf passes parameters as $1, $2, $3, $4, etc.
+    local jamf_param4="${4:-}"
 
     # Load compromised packages from external file
     load_compromised_packages
@@ -2950,6 +2959,11 @@ main() {
         esac
         shift
     done
+
+    # Jamf Pro compatibility: Use Parameter 4 if no directory was provided via arguments
+    if [[ -z "$scan_dir" && -n "$jamf_param4" ]]; then
+        scan_dir="$jamf_param4"
+    fi
 
     if [[ -z "$scan_dir" ]]; then
         usage

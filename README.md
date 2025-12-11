@@ -12,13 +12,12 @@ This fork includes a few modifications:
 
 - **Online CSV Source**: Loads compromised packages from DataDog's [indicators-of-compromise](https://github.com/DataDog/indicators-of-compromise) repository instead of a local file; one-click redeployment if more infected packages are discovered
 
-- **Work in Progress**: Additional modifications and improvements are ongoing to make this deployable via Jamf Pro (drop to local user, parameter substitution for dir path and .csv source URL)
+- **Parameter Substitution**: When deployed via MDM, use Parameter (`$4`) to specify the project directory. 
 
 ## Testing
 
 ```bash
 # Clone the repository
-
 cd shai-hulud-detect
 
 # Make the script executable
@@ -27,7 +26,7 @@ chmod +x shai-hulud-detector.sh
 # Scan your project for Shai-Hulud indicators
 ./shai-hulud-detector.sh /path/to/your/project
 ```
-Note that you'll need to adjust for parameter substition (`$4`, `$5`) for local testing.
+Not that if nothign is passed to `$4`, the script will fall back to original behaviour so you can still pass a directory path as a command argument.
 
 When you're ready, upload `shai-hulud-detector.sh` to your MDM to deploy remotely.
 

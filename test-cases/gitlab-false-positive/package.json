@@ -1,6 +1,0 @@
-{
-  "name": "gitlab-false-positive-test",
-  "version": "1.0.0",
-  "description": "Test case for GitLab false positive on discussion workflows (issue #83)",
-  "private": true
-}

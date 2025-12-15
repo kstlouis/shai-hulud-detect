@@ -1,4 +1,4 @@
-#!/usr/bin/env bash
+#!/bin/zsh
 
 # Shai-Hulud NPM Supply Chain Attack Detection Script
 # Detects indicators of compromise from September 2025 and November 2025 npm attacks
@@ -6,22 +6,16 @@
 # Usage: ./shai-hulud-detector.sh <directory_to_scan>
 # Jamf Pro: Parameter 4 = project directory path, Parameter 5 = CSV URL for compromised packages
 #
-# Requires: Bash 5.0+
+# Requires: Zsh (standard on macOS)
 
-# Require Bash 5.0+ for associative arrays, mapfile, and modern features
-if [[ -z "${BASH_VERSINFO[0]}" ]] || [[ "${BASH_VERSINFO[0]}" -lt 5 ]]; then
-    echo "ERROR: Shai-Hulud Detector requires Bash 5.0 or newer."
-    echo "You appear to be running: ${BASH_VERSION:-unknown}."
-    echo
-    echo "macOS:   brew install bash && run with:  /opt/homebrew/bin/bash $0 ..."
-    echo "Linux:   install a current bash via your package manager (bash 5.x is standard on modern distros)."
-    exit 1
-fi
+# Enable zsh options for compatibility
+setopt NO_NOMATCH  # Don't error on glob patterns that don't match
+setopt PIPE_FAIL   # Exit status of pipeline is that of rightmost command to exit with non-zero status
 
-set -eo pipefail
+set -e
 
 # Script directory for locating companion files (compromised-packages.txt)
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+SCRIPT_DIR="$(cd "$(dirname "${(%):-%x}")" && pwd)"
 
 # Global temp directory for file-based storage
 TEMP_DIR=""
@@ -191,9 +185,9 @@ print_stage_complete() {
     print_status "$BLUE" "   $stage_name completed [$elapsed]"
 }
 
-# Associative arrays for O(1) lookups (Bash 5.0+ feature)
-declare -A COMPROMISED_PACKAGES_MAP    # "package:version" -> 1
-declare -A COMPROMISED_NAMESPACES_MAP  # "@namespace" -> 1
+# Associative arrays for O(1) lookups (Zsh native feature)
+typeset -A COMPROMISED_PACKAGES_MAP    # "package:version" -> 1
+typeset -A COMPROMISED_NAMESPACES_MAP  # "@namespace" -> 1
 
 # Function: load_compromised_packages
 # Purpose: Load compromised package database from online CSV file or fallback list
@@ -263,8 +257,7 @@ load_compromised_packages() {
         if command -v python3 >/dev/null 2>&1 || command -v python >/dev/null 2>&1; then
             local python_cmd="python3"
             command -v python3 >/dev/null 2>&1 || python_cmd="python"
-            mapfile -t raw_packages < <(
-                $python_cmd -c "
+            raw_packages=(${(f)"$($python_cmd -c "
 import csv
 import sys
 import re
@@ -282,15 +275,10 @@ with open('$temp_csv', 'r', encoding='utf-8') as f:
                 # Validate version format (semver: x.y.z)
                 if re.match(r'^\d+\.\d+\.\d+$', version):
                     print(f'{package_name}:{version}')
-" 2>/dev/null | \
-                grep -E '^[a-zA-Z@][^:]+:[0-9]+\.[0-9]+\.[0-9]+' | \
-                tr -d $'\r' | \
-                sort -u
-            )
+" 2>/dev/null | grep -E '^[a-zA-Z@][^:]+:[0-9]+\.[0-9]+\.[0-9]+' | tr -d $'\r' | sort -u)"})
         else
             # Fallback to awk (simpler parsing, may miss some edge cases)
-            mapfile -t raw_packages < <(
-                awk -F',' '
+            raw_packages=(${(f)"$(awk -F',' '
                 NR > 1 && NF >= 2 {
                     # Extract package_name (first field, remove quotes and trim)
                     package_name = $1
@@ -314,11 +302,7 @@ with open('$temp_csv', 'r', encoding='utf-8') as f:
                         }
                     }
                 }
-                ' "$temp_csv" 2>/dev/null | \
-                grep -E '^[a-zA-Z@][^:]+:[0-9]+\.[0-9]+\.[0-9]+' | \
-                tr -d $'\r' | \
-                sort -u
-            )
+                ' "$temp_csv" 2>/dev/null | grep -E '^[a-zA-Z@][^:]+:[0-9]+\.[0-9]+\.[0-9]+' | tr -d $'\r' | sort -u)"})
         fi
 
             # Populate associative array for O(1) lookups
@@ -1147,7 +1131,7 @@ check_file_hashes() {
 # Modifies: None
 # Returns: Outputs JSON to stdout with packages structure compatible with package-lock parser
 transform_pnpm_yaml() {
-    declare -a path
+    typeset -a path
     packages_file=$1
 
     echo -e "{"
@@ -1183,7 +1167,8 @@ transform_pnpm_yaml() {
         path[$currentdepth]=$key
 
         # Interested in packages.*
-        if [ "${path[0]}" != "packages" ]; then continue; fi
+        # Note: zsh arrays are 1-indexed, so use path[1] instead of path[0]
+        if [ "${path[1]}" != "packages" ]; then continue; fi
         if [ "${currentdepth}" != "2" ]; then continue; fi
 
         # Remove surrounding whitespace (yes, again)

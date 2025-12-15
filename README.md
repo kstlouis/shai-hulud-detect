@@ -10,6 +10,8 @@
 
 This fork includes a few modifications:
 
+- **Zsh Implementation**: Converted from Bash to Zsh for better compatibility with macOS deployments via MDM. Zsh is the default shell on macOS and works seamlessly when running as root through Jamf Pro, eliminating the need for additional bash installations.
+
 - **Online CSV Source**: When deployed via Jamf Pro, expects a CSV URL to be provided in Parameter 5 (e.g., DataDog's [indicators-of-compromise](https://github.com/DataDog/indicators-of-compromise) repository). Falls back to local `compromised-packages.txt` file if no URL is provided.
 
 - **Jamf Pro Parameters**: When deployed via Jamf Pro:
@@ -46,7 +48,7 @@ In theory any MDM should work, but this was only tested and used with Jamf Pro.
 ## Requirements
 
 - macOS or Unix-like system
-- **Bash 5.0 or newer** (required for associative arrays and performance features)
+- **Zsh** (standard on macOS, no additional installation needed)
 - Standard Unix tools: `find`, `grep`, `shasum`
 - Network access (required when using Parameter 5 or environment variable to fetch compromised packages CSV; local file fallback mode requires no network access)
 

@@ -12,28 +12,23 @@ This fork includes a few modifications:
 
 - **Zsh Implementation**: Converted from Bash to Zsh for better compatibility with macOS deployments via MDM. Zsh is the default shell on macOS and works seamlessly when running as root through Jamf Pro, eliminating the need for additional bash installations.
 
-- **Online CSV Source**: When deployed via Jamf Pro, expects a CSV URL to be provided in Parameter 5 (e.g., DataDog's [indicators-of-compromise](https://github.com/DataDog/indicators-of-compromise) repository). Falls back to local `compromised-packages.txt` file if no URL is provided.
+- **CSV-Based Package List**: Requires a CSV URL to be provided in Jamf Parameter 5 (e.g., DataDog's [indicators-of-compromise](https://github.com/DataDog/indicators-of-compromise) repository). The script fetches and parses the CSV to build the compromised packages database. No local files are required.
 
-- **Jamf Pro Parameters**: When deployed via Jamf Pro:
-  - **Parameter 4**: Project directory path (used if no directory provided via command-line arguments)
-  - **Parameter 5**: CSV URL for compromised packages (expected for Jamf deployments, falls back to local file if not provided) 
+- **Jamf Pro Parameters** (required):
+  - **Parameter 4**: Project directory path to scan
+  - **Parameter 5**: CSV URL for compromised packages (must be a raw GitHub URL, e.g., `https://raw.githubusercontent.com/...`) 
 
-## Testing
+## Deployment
 
-```bash
-# Clone the repository
-cd shai-hulud-detect
+This script is designed exclusively for deployment via Jamf Pro (or other MDM solutions). 
 
-# Make the script executable
-chmod +x shai-hulud-detector.sh
+1. Upload `shai-hulud-detector.sh` to your Jamf Pro script library
+2. Create a policy that runs the script
+3. Configure the policy parameters:
+   - **Parameter 4**: Set to the directory path you want to scan (e.g., `/Users/Shared/jamf-assets`)
+   - **Parameter 5**: Set to the CSV URL for compromised packages (e.g., `https://raw.githubusercontent.com/DataDog/indicators-of-compromise/main/shai-hulud-2.0/consolidated_iocs.csv`)
 
-# Scan your project for Shai-Hulud indicators
-./shai-hulud-detector.sh /path/to/your/project
-```
-
-Note that if nothing is passed to Parameter 4, the script will fall back to original behavior so you can still pass a directory path as a command argument.
-
-When you're ready, upload `shai-hulud-detector.sh` to your MDM to deploy remotely.
+**Important**: The CSV URL must be a raw GitHub URL (using `raw.githubusercontent.com`), not a blob URL (using `github.com/.../blob/...`).
 
 ## Disclaimers
 
@@ -50,7 +45,7 @@ In theory any MDM should work, but this was only tested and used with Jamf Pro.
 - macOS or Unix-like system
 - **Zsh** (standard on macOS, no additional installation needed)
 - Standard Unix tools: `find`, `grep`, `shasum`
-- Network access (required when using Parameter 5 or environment variable to fetch compromised packages CSV; local file fallback mode requires no network access)
+- Network access (required to fetch compromised packages CSV from Parameter 5)
 
 ## Exit Codes
 

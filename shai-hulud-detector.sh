@@ -1326,7 +1326,12 @@ check_packages() {
     print_status "$BLUE" "   Extracting dependencies from all package.json files..."
 
     # Create optimized lookup table from compromised packages (sorted for join)
-    awk -F: '{print $1":"$2}' $SCRIPT_DIR/compromised-packages.txt | LC_ALL=C sort > "$TEMP_DIR/compromised_lookup.txt"
+    # Generate from COMPROMISED_PACKAGES_MAP associative array
+    {
+        for pkg in "${(@k)COMPROMISED_PACKAGES_MAP}"; do
+            echo "$pkg"
+        done
+    } | LC_ALL=C sort > "$TEMP_DIR/compromised_lookup.txt"
 
     # Extract all dependencies from all package.json files using parallel xargs + awk
     # Format: file_path|package_name:version
@@ -2900,13 +2905,23 @@ generate_report() {
 # Returns: Exit code 0 for clean, 1 for high-risk findings, 2 for medium-risk findings
 main() {
     local paranoid_mode=false
-    local scan_dir=""
+    # Initialize scan_dir from Jamf Parameter 4 (can be overridden by command-line arguments)
+    local scan_dir="${4:-}"
     local save_log=""
     
-    # Jamf Pro compatibility: Save Parameters 4 and 5 before argument parsing
+    # DEBUG: Print all arguments to understand what Jamf is passing
+    echo "DEBUG: Total arguments: $#" >&2
+    local arg_num=1
+    for arg in "$@"; do
+        echo "DEBUG: arg[$arg_num]='$arg'" >&2
+        arg_num=$((arg_num + 1))
+    done
+    
+    # Jamf Pro compatibility: Save Parameter 5 for CSV URL
     # Jamf passes parameters as $1, $2, $3, $4, etc.
-    local jamf_param4="${4:-}"
     local jamf_param5="${5:-}"
+    
+    echo "DEBUG: scan_dir='$scan_dir' jamf_param5='$jamf_param5'" >&2
     
     # Set CSV URL only if Parameter 5 is provided
     # If not provided, load_compromised_packages will use local compromised-packages.txt file
@@ -2923,6 +2938,8 @@ main() {
 
     # Set up signal handling for clean termination of background processes
     trap 'cleanup_and_exit' INT TERM
+
+
 
     # Parse arguments
     while [[ $# -gt 0 ]]; do
@@ -2972,24 +2989,16 @@ main() {
                 usage
                 ;;
             *)
-                if [[ -z "$scan_dir" ]]; then
-                    scan_dir="$1"
-                else
-                    echo "Too many arguments"
-                    usage
-                fi
-                ;;
+
         esac
         shift
     done
 
-    # Jamf Pro compatibility: Use Parameter 4 if no directory was provided via arguments
-    if [[ -z "$scan_dir" && -n "$jamf_param4" ]]; then
-        scan_dir="$jamf_param4"
-    fi
-
+    # Validate that scan_dir was provided via Jamf Parameter 4
     if [[ -z "$scan_dir" ]]; then
-        usage
+        print_status "$RED" "Error: No scan directory provided."
+        echo "Jamf Pro: Set Parameter 4 to the project directory path." >&2
+        exit 1
     fi
 
     if [[ ! -d "$scan_dir" ]]; then

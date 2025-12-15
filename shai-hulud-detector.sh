@@ -14,7 +14,7 @@ setopt PIPE_FAIL   # Exit status of pipeline is that of rightmost command to exi
 
 set -e
 
-# Script directory for locating companion files (compromised-packages.txt)
+# Script directory
 SCRIPT_DIR="$(cd "$(dirname "${(%):-%x}")" && pwd)"
 
 # Global temp directory for file-based storage

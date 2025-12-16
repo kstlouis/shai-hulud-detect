@@ -1130,8 +1130,8 @@ transform_pnpm_yaml() {
         val=${line#*:}
         val=${val##*( )}
 
-        # Save current path
-        path[$currentdepth]=$key
+        # Save current path (add 1 because zsh arrays are 1-indexed)
+        path[$((currentdepth + 1))]=$key
 
         # Interested in packages.*
         # Note: zsh arrays are 1-indexed, so use path[1] instead of path[0]

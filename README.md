@@ -8,11 +8,11 @@
 
 ## Key Differences from Original
 
-This fork includes a few modifications:
+This fork's primary modifications':
 
-- **Zsh Implementation**: Converted from Bash to Zsh for better compatibility with macOS deployments via MDM. Zsh is the default shell on macOS and works seamlessly when running as root through Jamf Pro, eliminating the need for additional bash installations.
+- **Zsh Implementation**: Converted from Bash to Zsh for better compatibility with macOS deployments via MDM. Zsh is the default shell on macOS and the included bash version is too out of date to comply with the requirements of the original script.
 
-- **CSV-Based Package List**: Requires a CSV URL to be provided in Jamf Parameter 5 (e.g., DataDog's [indicators-of-compromise](https://github.com/DataDog/indicators-of-compromise) repository). The script fetches and parses the CSV to build the compromised packages database. No local files are required.
+- **CSV-Based Package List**: Requires a CSV URL to be provided in Jamf Parameter 5 (e.g., DataDog's [indicators-of-compromise](https://github.com/DataDog/indicators-of-compromise) repository). The script fetches and parses the CSV to build the compromised packages database. No local files are required, and new vulnerabilities are automatically accounted for as they are discovered.
 
 - **Jamf Pro Parameters** (required):
   - **Parameter 4**: Project directory path to scan
@@ -34,15 +34,16 @@ This script is designed exclusively for deployment via Jamf Pro (or other MDM so
 
 This was built using:
 - a limited amount of scripting experience 
-- a healthy (..) amount of assistance from Cursor
+- a healthy (🫠) amount of assistance from Cursor
 - an almost impossibly short imposed dealine
+
 Use at your own risk.
 
 In theory any MDM should work, but this was only tested and used with Jamf Pro.
 
 ## Requirements
 
-- macOS or Unix-like system
+- macOS, probably
 - **Zsh** (standard on macOS, no additional installation needed)
 - Standard Unix tools: `find`, `grep`, `shasum`
 - Network access (required to fetch compromised packages CSV from Parameter 5)
@@ -55,8 +56,7 @@ In theory any MDM should work, but this was only tested and used with Jamf Pro.
 
 ## Original Repository
 
-For the original, fully-featured version with comprehensive documentation, please refer to:
-- **Original Repository**: https://github.com/Cobenian/shai-hulud-detect
+For the original, fully-featured version with comprehensive documentation, please refer to the [original project](https://github.com/Cobenian/shai-hulud-detect)
 
 ## License
 

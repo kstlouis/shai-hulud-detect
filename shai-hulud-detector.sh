@@ -2953,50 +2953,29 @@ main() {
 
     # Handle "default" parameter - check for ~/workspace or ~/code
     if [[ "$scan_dir" == "default" ]]; then
-        # Get console user (logged-in user) when running as root
-        local console_user=""
-        if [[ -f /dev/console ]]; then
-            console_user=$(stat -f%Su /dev/console 2>/dev/null || echo "")
-        fi
-        
-        if [[ -z "$console_user" ]]; then
-            # Fallback: get the non-root user with the largest home directory
-            local largest_user=""
-            local largest_size=0
-            for user_dir in /Users/*; do
-                if [[ -d "$user_dir" ]]; then
-                    local username=$(basename "$user_dir")
-                    # Skip system directories
-                    [[ "$username" == "." || "$username" == ".." || "$username" == "Shared" ]] && continue
-                    # Get directory size
-                    local dir_size=$(du -sk "$user_dir" 2>/dev/null | awk '{print $1}' || echo "0")
-                    if [[ -n "$dir_size" && "$dir_size" -gt "$largest_size" ]]; then
-                        largest_size=$dir_size
-                        largest_user="$username"
-                    fi
+        # Find the first user that has either ~/workspace or ~/code directory
+        local found_dir=""
+        for user_dir in /Users/*; do
+            if [[ -d "$user_dir" ]]; then
+                local username=$(basename "$user_dir")
+                # Skip system directories
+                [[ "$username" == "." || "$username" == ".." || "$username" == "Shared" ]] && continue
+                
+                # Check for workspace or code directory
+                if [[ -d "$user_dir/workspace" ]]; then
+                    found_dir="$user_dir/workspace"
+                    break
+                elif [[ -d "$user_dir/code" ]]; then
+                    found_dir="$user_dir/code"
+                    break
                 fi
-            done
-            console_user="$largest_user"
-        fi
-        
-        if [[ -n "$console_user" && "$console_user" != "root" ]]; then
-            local user_home="/Users/$console_user"
-            if [[ -d "$user_home" ]]; then
-                # Try ~/workspace first, then ~/code
-                if [[ -d "$user_home/workspace" ]]; then
-                    scan_dir="$user_home/workspace"
-                elif [[ -d "$user_home/code" ]]; then
-                    scan_dir="$user_home/code"
-                else
-                    print_status "$RED" "Error: Neither ~/workspace nor ~/code directory found for user '$console_user'."
-                    exit 1
-                fi
-            else
-                print_status "$RED" "Error: Unable to determine user home directory for path expansion."
-                exit 1
             fi
+        done
+        
+        if [[ -n "$found_dir" ]]; then
+            scan_dir="$found_dir"
         else
-            print_status "$RED" "Error: Unable to determine console user for path expansion."
+            print_status "$RED" "Error: No user found with ~/workspace or ~/code directory."
             exit 1
         fi
     else

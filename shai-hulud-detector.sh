@@ -2946,13 +2946,64 @@ main() {
     # Validate that scan_dir was provided via Jamf Parameter 4
     if [[ -z "$scan_dir" ]]; then
         print_status "$RED" "Error: No scan directory provided."
-        echo "Jamf Pro: Set Parameter 4 to the project directory path." >&2
+        echo "Jamf Pro: Set Parameter 4 to 'default' or a specific directory path." >&2
         exit 1
     fi
 
-    if [[ ! -d "$scan_dir" ]]; then
-        print_status "$RED" "Error: Directory '$scan_dir' does not exist."
-        exit 1
+    # Handle "default" parameter - check for ~/workspace or ~/code
+    if [[ "$scan_dir" == "default" ]]; then
+        # Get console user (logged-in user) when running as root
+        local console_user=""
+        if [[ -f /dev/console ]]; then
+            console_user=$(stat -f%Su /dev/console 2>/dev/null || echo "")
+        fi
+        
+        if [[ -z "$console_user" ]]; then
+            # Fallback: get the non-root user with the largest home directory
+            local largest_user=""
+            local largest_size=0
+            for user_dir in /Users/*; do
+                if [[ -d "$user_dir" ]]; then
+                    local username=$(basename "$user_dir")
+                    # Skip system directories
+                    [[ "$username" == "." || "$username" == ".." || "$username" == "Shared" ]] && continue
+                    # Get directory size
+                    local dir_size=$(du -sk "$user_dir" 2>/dev/null | awk '{print $1}' || echo "0")
+                    if [[ -n "$dir_size" && "$dir_size" -gt "$largest_size" ]]; then
+                        largest_size=$dir_size
+                        largest_user="$username"
+                    fi
+                fi
+            done
+            console_user="$largest_user"
+        fi
+        
+        if [[ -n "$console_user" && "$console_user" != "root" ]]; then
+            local user_home="/Users/$console_user"
+            if [[ -d "$user_home" ]]; then
+                # Try ~/workspace first, then ~/code
+                if [[ -d "$user_home/workspace" ]]; then
+                    scan_dir="$user_home/workspace"
+                elif [[ -d "$user_home/code" ]]; then
+                    scan_dir="$user_home/code"
+                else
+                    print_status "$RED" "Error: Neither ~/workspace nor ~/code directory found for user '$console_user'."
+                    exit 1
+                fi
+            else
+                print_status "$RED" "Error: Unable to determine user home directory for path expansion."
+                exit 1
+            fi
+        else
+            print_status "$RED" "Error: Unable to determine console user for path expansion."
+            exit 1
+        fi
+    else
+        # Explicit path provided - validate it exists
+        if [[ ! -d "$scan_dir" ]]; then
+            print_status "$RED" "Error: Directory '$scan_dir' does not exist."
+            exit 1
+        fi
     fi
 
     # Convert to absolute path

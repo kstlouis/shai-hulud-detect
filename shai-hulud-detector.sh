@@ -153,9 +153,13 @@ MALICIOUS_HASHLIST=(
 
 PARALLELISM=4
 if [[ "$OSTYPE" == "linux-gnu"* ]]; then
-  PARALLELISM=$(nproc)
+  PARALLELISM=$(nproc 2>/dev/null || echo "4")
 elif [[ "$OSTYPE" == "darwin"* ]]; then
-  PARALLELISM=$(sysctl -n hw.ncpu)
+  PARALLELISM=$(sysctl -n hw.ncpu 2>/dev/null || echo "4")
+fi
+# Ensure PARALLELISM is a valid number
+if ! [[ "$PARALLELISM" =~ ^[0-9]+$ ]] || [[ "$PARALLELISM" -lt 1 ]]; then
+  PARALLELISM=4
 fi
 
 # Timing variables
@@ -286,7 +290,7 @@ with open('$temp_csv', 'r', encoding='utf-8') as f:
         # Populate associative array for O(1) lookups
         for pkg in "${raw_packages[@]}"; do
             COMPROMISED_PACKAGES_MAP["$pkg"]=1
-            ((count++)) || true  # Prevent errexit when count starts at 0
+            count=$((count + 1))
         done
 
         print_status "$GREEN" "✅ Loaded $count compromised packages from online CSV (O(1) lookup enabled)"
@@ -1058,14 +1062,23 @@ check_file_hashes() {
     # FIX: Use sha256sum on Linux/WSL, shasum on macOS/Git Bash
     # Check if shasum actually works (not just exists in PATH)
     local hash_cmd="sha256sum"
+    local hash_args=""
     if shasum -a 256 /dev/null &>/dev/null; then
-        hash_cmd="shasum -a 256"
+        hash_cmd="shasum"
+        hash_args="-a 256"
     fi
     # Use -n 100 to batch files and avoid "argument list too long" on large repos (issue #94)
     # Use null-delimited input to handle filenames with spaces (issue #92)
-    tr '\n' '\0' < "$TEMP_DIR/priority_files.txt" | \
-        xargs -0 -n 100 -P "$PARALLELISM" $hash_cmd 2>/dev/null | \
-        awk '{print $1, $2}' > "$TEMP_DIR/file_hashes.txt"
+    # Use sh -c to properly execute commands with arguments (fixes issue with multi-word hash_cmd)
+    if [[ -n "$hash_args" ]]; then
+        tr '\n' '\0' < "$TEMP_DIR/priority_files.txt" | \
+            xargs -0 -n 100 -P "$PARALLELISM" sh -c "$hash_cmd $hash_args \"\$@\"" _ 2>/dev/null | \
+            awk '{print $1, $2}' > "$TEMP_DIR/file_hashes.txt"
+    else
+        tr '\n' '\0' < "$TEMP_DIR/priority_files.txt" | \
+            xargs -0 -n 100 -P "$PARALLELISM" "$hash_cmd" 2>/dev/null | \
+            awk '{print $1, $2}' > "$TEMP_DIR/file_hashes.txt"
+    fi
 
     # Create malicious hash lookup pattern for grep
     printf '%s\n' "${MALICIOUS_HASHLIST[@]}" > "$TEMP_DIR/malicious_patterns.txt"

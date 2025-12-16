@@ -91,13 +91,12 @@ cleanup_temp_files() {
 # Set trap for cleanup on exit, interrupt, or termination
 trap cleanup_temp_files EXIT INT TERM
 
-# Color codes for output
-RED='\033[0;31m'
-YELLOW='\033[1;33m'
-GREEN='\033[0;32m'
-BLUE='\033[0;34m'
-ORANGE='\033[38;5;172m'  # Muted orange for stage headers (256-color mode)
-NC='\033[0m' # No Color
+# Emoji indicators for output (better for Jamf logs than color codes)
+RED='🚨'
+YELLOW='⚠️'
+GREEN='✅'
+BLUE='ℹ️'  # For stage headers
+NC=''  # No indicator needed
 
 # Detect available grep tools at startup
 # Priority order: git-grep > ripgrep > grep
@@ -179,7 +178,7 @@ get_elapsed_time() {
 print_stage_complete() {
     local stage_name=$1
     local elapsed=$(get_elapsed_time)
-    print_status "$BLUE" "   $stage_name completed [$elapsed]"
+    echo "   $stage_name completed [$elapsed]"
 }
 
 # Associative arrays for O(1) lookups (Zsh native feature)
@@ -212,7 +211,7 @@ load_compromised_packages() {
         temp_csv=$(mktemp -t shai-hulud-iocs-XXXXXX.csv 2>/dev/null || echo "/tmp/shai-hulud-iocs-$$.csv")
     fi
 
-    print_status "$BLUE" "📥 Fetching compromised packages from: $csv_url"
+    echo "📥 Fetching compromised packages from: $csv_url"
     
     # Try to fetch using curl or wget
     local fetch_success=false
@@ -290,7 +289,7 @@ with open('$temp_csv', 'r', encoding='utf-8') as f:
             ((count++)) || true  # Prevent errexit when count starts at 0
         done
 
-        print_status "$GREEN" "✓ Loaded $count compromised packages from online CSV (O(1) lookup enabled)"
+        print_status "$GREEN" "✅ Loaded $count compromised packages from online CSV (O(1) lookup enabled)"
         return 0
     else
         # CSV fetch failed - error out
@@ -493,14 +492,19 @@ usage() {
 }
 
 # Function: print_status
-# Purpose: Print colored status messages to console
-# Args: $1 = color code (RED, YELLOW, GREEN, BLUE, NC), $2 = message text
+# Purpose: Print status messages with emoji indicators (better for Jamf logs)
+# Args: $1 = indicator type (RED, YELLOW, GREEN, BLUE, NC), $2 = message text
 # Modifies: None (outputs to stdout)
-# Returns: Prints colored message
+# Returns: Prints message with emoji indicator
 print_status() {
-    local color=$1
+    local indicator=$1
     local message=$2
-    echo -e "${color}${message}${NC}"
+    # Prepend emoji indicator if provided (NC means no indicator)
+    if [[ -n "$indicator" && "$indicator" != "$NC" ]]; then
+        echo "${indicator} ${message}"
+    else
+        echo "${message}"
+    fi
 }
 
 # =============================================================================
@@ -602,25 +606,13 @@ show_file_preview() {
 
     # Only show file preview for HIGH RISK items to reduce noise
     if [[ "$context" == *"HIGH RISK"* ]]; then
-        echo -e "   ${BLUE}┌─ File: $file_path${NC}"
-        echo -e "   ${BLUE}│  Context: $context${NC}"
-        echo -e "   ${BLUE}└─${NC}"
+        echo "   ┌─ File: $file_path"
+        echo "   │  Context: $context"
+        echo "   └─"
         echo
     fi
 }
 
-# Function: show_progress
-# Purpose: Display real-time progress indicator for file scanning operations
-# Args: $1 = current files processed, $2 = total files to process
-# Modifies: None (outputs to stderr with ANSI escape codes)
-# Returns: Prints "X / Y checked (Z %)" with line clearing
-show_progress() {
-    local current=$1
-    local total=$2
-    local percent=0
-    [[ $total -gt 0 ]] && percent=$((current * 100 / total))
-    echo -ne "\r\033[K$current / $total checked ($percent %)"
-}
 
 # Function: count_files
 # Purpose: Count files matching find criteria, returns clean integer
@@ -691,7 +683,7 @@ collect_all_files() {
 # Returns: Populates WORKFLOW_FILES array with paths to suspicious workflow files
 check_workflow_files() {
     local scan_dir=$1
-    print_status "$BLUE" "   Checking for malicious workflow files..."
+    echo "   Checking for malicious workflow files..."
 
     # Use pre-categorized files from collect_all_files (performance optimization)
     while IFS= read -r file; do
@@ -708,7 +700,7 @@ check_workflow_files() {
 # Returns: Populates temp files with paths to suspicious Bun-related malicious files
 check_bun_attack_files() {
     local scan_dir=$1
-    print_status "$BLUE" "   Checking for November 2025 Bun attack files..."
+    echo "   Checking for November 2025 Bun attack files..."
 
     # Known malicious file hashes from Koi.ai incident report
     local setup_bun_hashes=(
@@ -773,7 +765,7 @@ check_bun_attack_files() {
 # Returns: Populates arrays with paths to new attack pattern files
 check_new_workflow_patterns() {
     local scan_dir=$1
-    print_status "$BLUE" "   Checking for new workflow patterns..."
+    echo "   Checking for new workflow patterns..."
 
     # Look for formatter_123456789.yml workflow files
     # Use pre-categorized files from collect_all_files (performance optimization)
@@ -803,7 +795,7 @@ check_new_workflow_patterns() {
 # Returns: Populates discussion_workflows.txt with paths to suspicious discussion-triggered workflows
 check_discussion_workflows() {
     local scan_dir=$1
-    print_status "$BLUE" "   Checking for malicious discussion workflows..."
+    echo "   Checking for malicious discussion workflows..."
 
     # Phase 3 Optimization: Batch processing with combined patterns
     # Create a temporary file list for valid workflow files to process in batches
@@ -848,7 +840,7 @@ check_discussion_workflows() {
 # Returns: Populates github_runners.txt with paths to suspicious runner installations
 check_github_runners() {
     local scan_dir=$1
-    print_status "$BLUE" "   Checking for malicious GitHub Actions runners..."
+    echo "   Checking for malicious GitHub Actions runners..."
 
     # Performance Optimization: Single find operation with combined patterns
     {
@@ -896,7 +888,7 @@ check_github_runners() {
 # Returns: Populates destructive_patterns.txt with paths to files containing destructive patterns
 check_destructive_patterns() {
     local scan_dir=$1
-    print_status "$BLUE" "   Checking for destructive payload patterns..."
+    echo "   Checking for destructive payload patterns..."
 
     # Phase 3 Optimization: Pre-compile combined regex patterns for batch processing
     # Basic destructive patterns - ONLY flag when targeting user directories ($HOME, ~, /home/)
@@ -953,7 +945,7 @@ check_destructive_patterns() {
 # Returns: Populates array with files containing suspicious preinstall patterns
 check_preinstall_bun_patterns() {
     local scan_dir=$1
-    print_status "$BLUE" "   Checking for fake Bun preinstall patterns..."
+    echo "   Checking for fake Bun preinstall patterns..."
 
     # Look for package.json files with suspicious "preinstall": "node setup_bun.js" pattern
     while IFS= read -r file; do
@@ -974,7 +966,7 @@ check_preinstall_bun_patterns() {
 # Returns: Populates array with workflow files containing SHA1HULUD runner references
 check_github_actions_runner() {
     local scan_dir=$1
-    print_status "$BLUE" "   Checking for SHA1HULUD GitHub Actions runners..."
+    echo "   Checking for SHA1HULUD GitHub Actions runners..."
 
     # Look for workflow files containing SHA1HULUD runner names
     while IFS= read -r file; do
@@ -995,7 +987,7 @@ check_github_actions_runner() {
 # Returns: Populates array with git repositories matching the description pattern
 check_second_coming_repos() {
     local scan_dir=$1
-    print_status "$BLUE" "   Checking for 'Second Coming' repository descriptions..."
+    echo "   Checking for 'Second Coming' repository descriptions..."
 
     # Performance Optimization: Use pre-collected git repositories
     local git_repos_source
@@ -1044,7 +1036,7 @@ check_file_hashes() {
 
     # FAST FILTER: Use single find command for recently modified non-node_modules files
     # This is much faster than looping through every file with stat
-    print_status "$BLUE" "   Filtering files for hash checking..."
+    echo "   Filtering files for hash checking..."
 
     # Priority files: recently modified (30 days) OR known malicious patterns
     {
@@ -1058,11 +1050,11 @@ check_file_hashes() {
     local filesCount
     filesCount=$(wc -l < "$TEMP_DIR/priority_files.txt" 2>/dev/null || echo "0")
 
-    print_status "$BLUE" "   Checking $filesCount priority files for known malicious content (filtered from $totalFiles total)..."
+    echo "   Checking $filesCount priority files for known malicious content (filtered from $totalFiles total)..."
 
     # BATCH HASH: Calculate all hashes in parallel using xargs
     # Create hash lookup file with format: hash filename
-    print_status "$BLUE" "   Computing hashes in parallel..."
+    echo "   Computing hashes in parallel..."
     # FIX: Use sha256sum on Linux/WSL, shasum on macOS/Git Bash
     # Check if shasum actually works (not just exists in PATH)
     local hash_cmd="sha256sum"
@@ -1079,7 +1071,7 @@ check_file_hashes() {
     printf '%s\n' "${MALICIOUS_HASHLIST[@]}" > "$TEMP_DIR/malicious_patterns.txt"
 
     # Fast set intersection: find matching hashes
-    print_status "$BLUE" "   Checking against known malicious hashes..."
+    echo "   Checking against known malicious hashes..."
     while IFS=' ' read -r hash file; do
         if grep -qF "$hash" "$TEMP_DIR/malicious_patterns.txt" 2>/dev/null; then
             echo "$file:$hash" >> "$TEMP_DIR/malicious_hashes.txt"
@@ -1282,10 +1274,10 @@ check_packages() {
     local filesCount
     filesCount=$(wc -l < "$TEMP_DIR/package_files.txt" 2>/dev/null || echo "0")
 
-    print_status "$BLUE" "   Checking $filesCount package.json files for compromised packages..."
+    echo "   Checking $filesCount package.json files for compromised packages..."
 
     # BATCH OPTIMIZATION: Extract all deps using parallel processing
-    print_status "$BLUE" "   Extracting dependencies from all package.json files..."
+    echo "   Extracting dependencies from all package.json files..."
 
     # Create optimized lookup table from compromised packages (sorted for join)
     # Generate from COMPROMISED_PACKAGES_MAP associative array
@@ -1315,9 +1307,9 @@ check_packages() {
         ' > "$TEMP_DIR/all_deps.txt" 2>/dev/null
 
     # FAST SET INTERSECTION: Use awk hash lookup instead of grep per line
-    print_status "$BLUE" "   Checking dependencies against compromised list..."
+    echo "   Checking dependencies against compromised list..."
     local depCount=$(wc -l < "$TEMP_DIR/all_deps.txt" 2>/dev/null || echo "0")
-    print_status "$BLUE" "   Found $depCount total dependencies to check"
+    echo "   Found $depCount total dependencies to check"
 
     # Create sorted deps file for set intersection
     cut -d'|' -f2 "$TEMP_DIR/all_deps.txt" | LC_ALL=C sort | uniq > "$TEMP_DIR/deps_only.txt"
@@ -1336,7 +1328,7 @@ check_packages() {
     fi
 
     # Check for suspicious namespaces - simplified for speed
-    print_status "$BLUE" "   Checking for compromised namespaces..."
+    echo "   Checking for compromised namespaces..."
     # Quick check: just look in the already-extracted dependencies file
     # This is much faster than re-reading all package.json files
     for namespace in "${COMPROMISED_NAMESPACES[@]}"; do
@@ -1347,8 +1339,6 @@ check_packages() {
             done
         fi
     done
-
-    echo -ne "\r\033[K"
 }
 
 # Function: check_postinstall_hooks
@@ -1358,7 +1348,7 @@ check_packages() {
 # Returns: Populates POSTINSTALL_HOOKS array with package.json files containing hooks
 check_postinstall_hooks() {
     local scan_dir=$1
-    print_status "$BLUE" "   Checking for suspicious postinstall hooks..."
+    echo "   Checking for suspicious postinstall hooks..."
 
     while IFS= read -r -d '' package_file; do
         if [[ -f "$package_file" && -r "$package_file" ]]; then
@@ -1384,7 +1374,7 @@ check_postinstall_hooks() {
 # Returns: Populates SUSPICIOUS_CONTENT array with files containing suspicious patterns
 check_content() {
     local scan_dir=$1
-    print_status "$BLUE" "   Checking for suspicious content patterns..."
+    echo "   Checking for suspicious content patterns..."
 
     # FAST: Use xargs with grep -l for bulk searching instead of per-file grep
     # Search for webhook.site references
@@ -1407,7 +1397,7 @@ check_content() {
 # Returns: Populates arrays with wallet hijacking, XMLHttpRequest tampering, and attacker indicators
 check_crypto_theft_patterns() {
     local scan_dir=$1
-    print_status "$BLUE" "   Checking for cryptocurrency theft patterns..."
+    echo "   Checking for cryptocurrency theft patterns..."
 
     # FAST: Use xargs with grep -l for bulk pattern searching
     # Check for specific malicious functions from chalk/debug attack (highest priority)
@@ -1477,7 +1467,7 @@ check_crypto_theft_patterns() {
 # Returns: Populates GIT_BRANCHES array with branch names and commit hashes
 check_git_branches() {
     local scan_dir=$1
-    print_status "$BLUE" "   Checking for suspicious git branches..."
+    echo "   Checking for suspicious git branches..."
 
     # Performance Optimization: Use pre-collected git repositories and limit search scope
     if [[ -f "$TEMP_DIR/git_repos.txt" ]]; then
@@ -1691,7 +1681,7 @@ get_lockfile_version() {
 # Returns: Populates TRUFFLEHOG_ACTIVITY array with risk level (HIGH/MEDIUM/LOW) prefixes
 check_trufflehog_activity() {
     local scan_dir=$1
-    print_status "$BLUE" "   Checking for Trufflehog activity and secret scanning..."
+    echo "   Checking for Trufflehog activity and secret scanning..."
 
     # Look for trufflehog binary files (always HIGH RISK)
     while IFS= read -r binary_file; do
@@ -1759,7 +1749,7 @@ check_trufflehog_activity() {
 # Returns: Populates SHAI_HULUD_REPOS array with repository patterns and migration indicators
 check_shai_hulud_repos() {
     local scan_dir=$1
-    print_status "$BLUE" "   Checking for Shai-Hulud repositories and migration patterns..."
+    echo "   Checking for Shai-Hulud repositories and migration patterns..."
 
     # Performance Optimization: Use pre-collected git repositories
     local git_repos_source
@@ -1810,7 +1800,7 @@ check_shai_hulud_repos() {
 # Returns: Populates INTEGRITY_ISSUES with compromised packages found in lockfiles
 check_package_integrity() {
     local scan_dir=$1
-    print_status "$BLUE" "   Checking package lock files for integrity issues..."
+    echo "   Checking package lock files for integrity issues..."
 
     # Check each lockfile
     while IFS= read -r -d '' lockfile; do
@@ -2352,13 +2342,13 @@ write_log_file() {
 generate_report() {
     local paranoid_mode="$1"
     echo
-    print_status "$BLUE" "=============================================="
+    echo "=============================================="
     if [[ "$paranoid_mode" == "true" ]]; then
-        print_status "$BLUE" "  SHAI-HULUD + PARANOID SECURITY REPORT"
+        echo "  SHAI-HULUD + PARANOID SECURITY REPORT"
     else
-        print_status "$BLUE" "      SHAI-HULUD DETECTION REPORT"
+        echo "      SHAI-HULUD DETECTION REPORT"
     fi
-    print_status "$BLUE" "=============================================="
+    echo "=============================================="
     echo
 
     local total_issues=0
@@ -2516,8 +2506,8 @@ generate_report() {
             show_file_preview "$file_path" "HIGH RISK: Contains compromised package version: $package_info"
             high_risk=$((high_risk+1))
         done < "$TEMP_DIR/compromised_found.txt"
-        echo -e "   ${YELLOW}NOTE: These specific package versions are known to be compromised.${NC}"
-        echo -e "   ${YELLOW}You should immediately update or remove these packages.${NC}"
+        echo "   ⚠️ NOTE: These specific package versions are known to be compromised."
+        echo "   ⚠️ You should immediately update or remove these packages."
         echo
     fi
 
@@ -2532,21 +2522,21 @@ generate_report() {
             show_file_preview "$file_path" "MEDIUM RISK: Contains package version that could match compromised version: $package_info"
             medium_risk=$((medium_risk+1))
         done < "$TEMP_DIR/suspicious_found.txt"
-        echo -e "   ${YELLOW}NOTE: Manual review required to determine if these are malicious.${NC}"
+        echo "   ⚠️ NOTE: Manual review required to determine if these are malicious."
         echo
     fi
 
     # Report lockfile-safe packages
     if [[ -s "$TEMP_DIR/lockfile_safe_versions.txt" ]]; then
-        print_status "$BLUE" "ℹ️  LOW RISK: Packages with safe lockfile versions:"
+        echo "LOW RISK: Packages with safe lockfile versions:"
         while IFS= read -r entry; do
             local file_path="${entry%:*}"
             local package_info="${entry#*:}"
             echo "   - Package: $package_info"
             echo "     Found in: $file_path"
         done < "$TEMP_DIR/lockfile_safe_versions.txt"
-        echo -e "   ${BLUE}NOTE: These package.json ranges could match compromised versions, but lockfiles pin to safe versions.${NC}"
-        echo -e "   ${BLUE}Your current installation is safe. Avoid running 'npm update' without reviewing changes.${NC}"
+        echo "   NOTE: These package.json ranges could match compromised versions, but lockfiles pin to safe versions."
+        echo "   Your current installation is safe. Avoid running 'npm update' without reviewing changes."
         echo
     fi
 
@@ -2561,7 +2551,7 @@ generate_report() {
             show_file_preview "$file_path" "Contains suspicious pattern: $pattern"
             medium_risk=$((medium_risk+1))
         done < "$TEMP_DIR/suspicious_content.txt"
-        echo -e "   ${YELLOW}NOTE: Manual review required to determine if these are malicious.${NC}"
+        echo "   ⚠️ NOTE: Manual review required to determine if these are malicious."
         echo
     fi
 
@@ -2588,8 +2578,8 @@ generate_report() {
                 echo "   - ${entry}"
                 high_risk=$((high_risk+1))
             done < "$crypto_high_file"
-            echo -e "   ${RED}NOTE: These patterns strongly indicate crypto theft malware from the September 8 attack.${NC}"
-            echo -e "   ${RED}Immediate investigation and remediation required.${NC}"
+            echo "   🚨 NOTE: These patterns strongly indicate crypto theft malware from the September 8 attack."
+            echo "   🚨 Immediate investigation and remediation required."
             echo
         fi
 
@@ -2600,8 +2590,8 @@ generate_report() {
                 echo "   - ${entry}"
                 medium_risk=$((medium_risk+1))
             done < "$crypto_medium_file"
-            echo -e "   ${YELLOW}NOTE: These may be legitimate crypto tools or framework code.${NC}"
-            echo -e "   ${YELLOW}Manual review recommended to determine if they are malicious.${NC}"
+            echo "   ⚠️ NOTE: These may be legitimate crypto tools or framework code."
+            echo "   ⚠️ Manual review recommended to determine if they are malicious."
             echo
         fi
 
@@ -2618,17 +2608,17 @@ generate_report() {
             local branch_info="${entry#*:}"
             echo "   - Repository: $repo_path"
             echo "     $branch_info"
-            echo -e "     ${BLUE}┌─ Git Investigation Commands:${NC}"
-            echo -e "     ${BLUE}│${NC}  cd '$repo_path'"
-            echo -e "     ${BLUE}│${NC}  git log --oneline -10 shai-hulud"
-            echo -e "     ${BLUE}│${NC}  git show shai-hulud"
-            echo -e "     ${BLUE}│${NC}  git diff main...shai-hulud"
-            echo -e "     ${BLUE}└─${NC}"
+            echo "     ┌─ Git Investigation Commands:"
+            echo "     │  cd '$repo_path'"
+            echo "     │  git log --oneline -10 shai-hulud"
+            echo "     │  git show shai-hulud"
+            echo "     │  git diff main...shai-hulud"
+            echo "     └─"
             echo
             medium_risk=$((medium_risk+1))
         done < "$TEMP_DIR/git_branches.txt"
-        echo -e "   ${YELLOW}NOTE: 'shai-hulud' branches may indicate compromise.${NC}"
-        echo -e "   ${YELLOW}Use the commands above to investigate each branch.${NC}"
+        echo "   ⚠️ NOTE: 'shai-hulud' branches may indicate compromise."
+        echo "   ⚠️ Use the commands above to investigate each branch."
         echo
     fi
 
@@ -2643,8 +2633,8 @@ generate_report() {
             show_file_preview "$file_path" "HIGH RISK: Contains suspicious postinstall hook: $hook_info"
             high_risk=$((high_risk+1))
         done < "$TEMP_DIR/postinstall_hooks.txt"
-        echo -e "   ${YELLOW}NOTE: Postinstall hooks can execute arbitrary code during package installation.${NC}"
-        echo -e "   ${YELLOW}Review these hooks carefully for malicious behavior.${NC}"
+        echo "   ⚠️ NOTE: Postinstall hooks can execute arbitrary code during package installation."
+        echo "   ⚠️ Review these hooks carefully for malicious behavior."
         echo
     fi
 
@@ -2685,8 +2675,8 @@ generate_report() {
                 show_file_preview "$file_path" "HIGH RISK: $activity_info"
                 high_risk=$((high_risk+1))
             done < "$trufflehog_high_file"
-            echo -e "   ${RED}NOTE: These patterns indicate likely malicious credential harvesting.${NC}"
-            echo -e "   ${RED}Immediate investigation and remediation required.${NC}"
+            echo "   🚨 NOTE: These patterns indicate likely malicious credential harvesting."
+            echo "   🚨 Immediate investigation and remediation required."
             echo
         fi
 
@@ -2701,8 +2691,8 @@ generate_report() {
                 show_file_preview "$file_path" "MEDIUM RISK: $activity_info"
                 medium_risk=$((medium_risk+1))
             done < "$trufflehog_medium_file"
-            echo -e "   ${YELLOW}NOTE: These may be legitimate security tools or framework code.${NC}"
-            echo -e "   ${YELLOW}Manual review recommended to determine if they are malicious.${NC}"
+            echo "   ⚠️ NOTE: These may be legitimate security tools or framework code."
+            echo "   ⚠️ Manual review recommended to determine if they are malicious."
             echo
         fi
 
@@ -2719,17 +2709,17 @@ generate_report() {
             local repo_info="${entry#*:}"
             echo "   - Repository: $repo_path"
             echo "     $repo_info"
-            echo -e "     ${BLUE}┌─ Repository Investigation Commands:${NC}"
-            echo -e "     ${BLUE}│${NC}  cd '$repo_path'"
-            echo -e "     ${BLUE}│${NC}  git log --oneline -10"
-            echo -e "     ${BLUE}│${NC}  git remote -v"
-            echo -e "     ${BLUE}│${NC}  ls -la"
-            echo -e "     ${BLUE}└─${NC}"
+            echo "     ┌─ Repository Investigation Commands:"
+            echo "     │  cd '$repo_path'"
+            echo "     │  git log --oneline -10"
+            echo "     │  git remote -v"
+            echo "     │  ls -la"
+            echo "     └─"
             echo
             high_risk=$((high_risk+1))
         done < "$TEMP_DIR/shai_hulud_repos.txt"
-        echo -e "   ${YELLOW}NOTE: 'Shai-Hulud' repositories are created by the malware for exfiltration.${NC}"
-        echo -e "   ${YELLOW}These should be deleted immediately after investigation.${NC}"
+        echo "   ⚠️ NOTE: 'Shai-Hulud' repositories are created by the malware for exfiltration."
+        echo "   ⚠️ These should be deleted immediately after investigation."
         echo
     fi
 
@@ -2753,8 +2743,8 @@ generate_report() {
             show_file_preview "$file_path" "Package integrity issue: $issue_info"
             medium_risk=$((medium_risk+1))
         done < "$TEMP_DIR/integrity_issues.txt"
-        echo -e "   ${YELLOW}NOTE: These issues may indicate tampering with package dependencies.${NC}"
-        echo -e "   ${YELLOW}Verify package versions and regenerate lockfiles if necessary.${NC}"
+        echo "   ⚠️ NOTE: These issues may indicate tampering with package dependencies."
+        echo "   ⚠️ Verify package versions and regenerate lockfiles if necessary."
         echo
     fi
 
@@ -2778,8 +2768,8 @@ generate_report() {
         if [[ $total_typo_count -gt 5 ]]; then
             echo "   - ... and $((total_typo_count - 5)) more typosquatting warnings (truncated for brevity)"
         fi
-        echo -e "   ${YELLOW}NOTE: These packages may be impersonating legitimate packages.${NC}"
-        echo -e "   ${YELLOW}Verify package names carefully and check if they should be legitimate packages.${NC}"
+        echo "   ⚠️ NOTE: These packages may be impersonating legitimate packages."
+        echo "   ⚠️ Verify package names carefully and check if they should be legitimate packages."
         echo
     fi
 
@@ -2803,8 +2793,8 @@ generate_report() {
         if [[ $total_net_count -gt 5 ]]; then
             echo "   - ... and $((total_net_count - 5)) more network warnings (truncated for brevity)"
         fi
-        echo -e "   ${YELLOW}NOTE: These patterns may indicate data exfiltration or communication with C2 servers.${NC}"
-        echo -e "   ${YELLOW}Review network connections and data flows carefully.${NC}"
+        echo "   ⚠️ NOTE: These patterns may indicate data exfiltration or communication with C2 servers."
+        echo "   ⚠️ Review network connections and data flows carefully."
         echo
     fi
 
@@ -2815,28 +2805,28 @@ generate_report() {
     fi
 
     # Summary
-    print_status "$BLUE" "=============================================="
+    echo "=============================================="
     if [[ $total_issues -eq 0 ]]; then
-        print_status "$GREEN" "✅ No indicators of Shai-Hulud compromise detected."
+        print_status "$GREEN" "No indicators of Shai-Hulud compromise detected."
         print_status "$GREEN" "Your system appears clean from this specific attack."
 
         # Show low risk findings if any (informational only)
         if [[ $low_risk_count -gt 0 ]]; then
             echo
-            print_status "$BLUE" "ℹ️  LOW RISK FINDINGS (informational only):"
+            echo "LOW RISK FINDINGS (informational only):"
             while IFS= read -r finding; do
                 echo "   - $finding"
             done < "$TEMP_DIR/low_risk_findings.txt"
-            echo -e "   ${BLUE}NOTE: These are likely legitimate framework code or dependencies.${NC}"
+            echo "   NOTE: These are likely legitimate framework code or dependencies."
         fi
     else
         print_status "$RED" "   SUMMARY:"
         print_status "$RED" "   High Risk Issues: $high_risk"
         print_status "$YELLOW" "   Medium Risk Issues: $medium_risk"
         if [[ $low_risk_count -gt 0 ]]; then
-            print_status "$BLUE" "   Low Risk (informational): $low_risk_count"
+            echo "   Low Risk (informational): $low_risk_count"
         fi
-        print_status "$BLUE" "   Total Critical Issues: $total_issues"
+        echo "   Total Critical Issues: $total_issues"
         echo
         print_status "$YELLOW" "⚠️  IMPORTANT:"
         print_status "$YELLOW" "   - High risk issues likely indicate actual compromise"
@@ -2850,14 +2840,14 @@ generate_report() {
 
         if [[ $low_risk_count -gt 0 ]] && [[ $total_issues -lt 5 ]]; then
             echo
-            print_status "$BLUE" "ℹ️  LOW RISK FINDINGS (likely false positives):"
+            echo "LOW RISK FINDINGS (likely false positives):"
             while IFS= read -r finding; do
                 echo "   - $finding"
             done < "$TEMP_DIR/low_risk_findings.txt"
-            echo -e "   ${BLUE}NOTE: These are typically legitimate framework patterns.${NC}"
+            echo "   NOTE: These are typically legitimate framework patterns."
         fi
     fi
-    print_status "$BLUE" "=============================================="
+    echo "=============================================="
 }
 
 # Function: main
@@ -2888,8 +2878,6 @@ main() {
     # Set up signal handling for clean termination of background processes
     trap 'cleanup_and_exit' INT TERM
 
-
-
     # Parse arguments
     while [[ $# -gt 0 ]]; do
         case $1 in
@@ -2902,7 +2890,7 @@ main() {
             --parallelism)
                 re='^[0-9]+$'
                 if ! [[ $2 =~ $re ]] ; then
-                    echo "${RED}error: Not a number${NC}" >&2;
+                    echo "🚨 error: Not a number" >&2;
                     usage
                 fi
                 PARALLELISM=$2
@@ -2910,7 +2898,7 @@ main() {
                 ;;
             --save-log)
                 if [[ -z "$2" || "$2" == -* ]]; then
-                    echo "${RED}error: --save-log requires a file path${NC}" >&2;
+                    echo "🚨 error: --save-log requires a file path" >&2;
                     usage
                 fi
                 save_log="$2"
@@ -2918,14 +2906,14 @@ main() {
                 ;;
             --use-git-grep)
                 if [[ "$HAS_GIT_GREP" != "true" ]]; then
-                    echo "${RED}Error: --use-git-grep specified but git is not installed${NC}" >&2
+                    echo "🚨 Error: --use-git-grep specified but git is not installed" >&2
                     exit 1
                 fi
                 GREP_TOOL="git-grep"
                 ;;
             --use-ripgrep)
                 if [[ "$HAS_RIPGREP" != "true" ]]; then
-                    echo "${RED}Error: --use-ripgrep specified but ripgrep (rg) is not installed${NC}" >&2
+                    echo "🚨 Error: --use-ripgrep specified but ripgrep (rg) is not installed" >&2
                     exit 1
                 fi
                 GREP_TOOL="ripgrep"
@@ -3018,16 +3006,16 @@ main() {
     # Initialize timing
     SCAN_START_TIME=$(date +%s%N 2>/dev/null || echo "$(date +%s)000000000")
 
-    print_status "$GREEN" "Starting Shai-Hulud detection scan..."
+    print_status "$BLUE" "Starting Shai-Hulud detection scan..."
     if [[ "$paranoid_mode" == "true" ]]; then
-        print_status "$BLUE" "Scanning directory: $scan_dir (with paranoid mode enabled)"
+        echo "Scanning directory: $scan_dir (with paranoid mode enabled)"
     else
-        print_status "$BLUE" "Scanning directory: $scan_dir"
+        echo "Scanning directory: $scan_dir"
     fi
     echo
 
     # Collect all files in a single pass for performance optimization
-    print_status "$ORANGE" "[Stage 1/6] Collecting file inventory for analysis"
+    print_status "$BLUE" "[Stage 1/6] Collecting file inventory for analysis"
     collect_all_files "$scan_dir"
 
     # Show summary of collected files
@@ -3035,7 +3023,7 @@ main() {
     print_stage_complete "File collection ($total_files files)"
 
     # Run core Shai-Hulud detection checks (sequential for reliability)
-    print_status "$ORANGE" "[Stage 2/6] Core detection (workflows, hashes, packages, hooks)"
+    print_status "$BLUE" "[Stage 2/6] Core detection (workflows, hashes, packages, hooks)"
     check_workflow_files "$scan_dir"
     check_file_hashes "$scan_dir"
     check_packages "$scan_dir"
@@ -3043,7 +3031,7 @@ main() {
     print_stage_complete "Core detection"
 
     # Content analysis
-    print_status "$ORANGE" "[Stage 3/6] Content analysis (patterns, crypto, trufflehog, git)"
+    print_status "$BLUE" "[Stage 3/6] Content analysis (patterns, crypto, trufflehog, git)"
     check_content "$scan_dir"
     check_crypto_theft_patterns "$scan_dir"
     check_trufflehog_activity "$scan_dir"
@@ -3051,7 +3039,7 @@ main() {
     print_stage_complete "Content analysis"
 
     # Repository analysis
-    print_status "$ORANGE" "[Stage 4/6] Repository analysis (repos, integrity, bun, workflows)"
+    print_status "$BLUE" "[Stage 4/6] Repository analysis (repos, integrity, bun, workflows)"
     check_shai_hulud_repos "$scan_dir"
     check_package_integrity "$scan_dir"
     check_bun_attack_files "$scan_dir"
@@ -3059,7 +3047,7 @@ main() {
     print_stage_complete "Repository analysis"
 
     # Advanced pattern detection
-    print_status "$ORANGE" "[Stage 5/6] Advanced detection (discussions, runners, destructive)"
+    print_status "$BLUE" "[Stage 5/6] Advanced detection (discussions, runners, destructive)"
     check_discussion_workflows "$scan_dir"
     check_github_runners "$scan_dir"
     check_destructive_patterns "$scan_dir"
@@ -3067,21 +3055,21 @@ main() {
     print_stage_complete "Advanced detection"
 
     # Final checks
-    print_status "$ORANGE" "[Stage 6/6] Final checks (actions runner, second coming repos)"
+    print_status "$BLUE" "[Stage 6/6] Final checks (actions runner, second coming repos)"
     check_github_actions_runner "$scan_dir"
     check_second_coming_repos "$scan_dir"
     print_stage_complete "Final checks"
 
     # Run additional security checks only in paranoid mode
     if [[ "$paranoid_mode" == "true" ]]; then
-        print_status "$BLUE" "[Paranoid] Running extra security checks..."
+        echo "[Paranoid] Running extra security checks..."
         check_typosquatting "$scan_dir"
         check_network_exfiltration "$scan_dir"
         print_stage_complete "Paranoid mode checks"
     fi
 
     # Generate report
-    print_status "$BLUE" "Generating report..."
+    echo "Generating report..."
     generate_report "$paranoid_mode"
 
     # Write log file if requested

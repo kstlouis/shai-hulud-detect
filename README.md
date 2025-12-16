@@ -8,27 +8,30 @@
 
 ## Key Differences from Original
 
-This fork's primary modifications':
+This fork's primary modifications:
 
 - **Zsh Implementation**: Converted from Bash to Zsh for better compatibility with macOS deployments via MDM. Zsh is the default shell on macOS and the included bash version is too out of date to comply with the requirements of the original script.
 
 - **CSV-Based Package List**: Requires a CSV URL to be provided in Jamf Parameter 5 (e.g., DataDog's [indicators-of-compromise](https://github.com/DataDog/indicators-of-compromise) repository). The script fetches and parses the CSV to build the compromised packages database. No local files are required, and new vulnerabilities are automatically accounted for as they are discovered.
 
 - **Jamf Pro Parameters** (required):
-  - **Parameter 4**: Project directory path to scan
+  - **Parameter 4**: Project directory path to scan (or just use "default")
   - **Parameter 5**: CSV URL for compromised packages (must be a raw GitHub URL, e.g., `https://raw.githubusercontent.com/...`) 
 
 ## Deployment
 
-This script is designed exclusively for deployment via Jamf Pro (or other MDM solutions). 
+This script is designed for deployment via Jamf Pro (or other MDM). 
 
 1. Upload `shai-hulud-detector.sh` to your Jamf Pro script library
 2. Create a policy that runs the script
 3. Configure the policy parameters:
-   - **Parameter 4**: Set to the directory path you want to scan (e.g., `/Users/Shared/jamf-assets`)
+   - **Parameter 4**: Set to either "default" or specify the directory path you want to scan (e.g., `/Users/Shared/jamf-assets`). Note that you cannot use `~` to expand your user home directory 
    - **Parameter 5**: Set to the CSV URL for compromised packages (e.g., `https://raw.githubusercontent.com/DataDog/indicators-of-compromise/main/shai-hulud-2.0/consolidated_iocs.csv`)
 
 **Important**: The CSV URL must be a raw GitHub URL (using `raw.githubusercontent.com`), not a blob URL (using `github.com/.../blob/...`).
+
+### Testing Locally
+Since Jamf uses $1-3, values passed in use `$4` and `$5`. If you want to test locally, you'll have to a) run the script with `sudo` and b) provide 3 "junk" arguments before passing the dir path and .csv file url
 
 ## Disclaimers
 
